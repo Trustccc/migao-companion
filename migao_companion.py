@@ -3,9 +3,6 @@
 米糕的100天情绪陪伴
 ====================
 我是米糕，一只11个月大的三花长毛拿破仑小母猫
-正在陪主人完成100天情绪打卡实验
-
-GitHub Actions 版本 - 根据 UTC 时间判断打卡类型
 """
 
 import json
@@ -15,103 +12,130 @@ import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-# 配置 - 优先使用环境变量
+# 配置
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=af5c75e2-c85b-45b6-8127-fd83e954408f')
-
-# GitHub Actions 中使用仓库内的文件
 WORK_DIR = Path('/workspace/emotion-companion') if Path('/workspace/emotion-companion').exists() else Path('.')
 DIARY_FILE = WORK_DIR / 'emotion-diary.md'
 DAY_COUNT_FILE = WORK_DIR / 'day-count.txt'
-METHODS_FILE = WORK_DIR / 'emotion-methods.txt'
 
 # 北京时区
 BEIJING_TZ = timezone(timedelta(hours=8))
 
-# ============ 米糕的早安问候 ============
-MORNING_OPENS = [
-    "喵喵喵～主人主人！米糕来啦！在你脚边转圈圈～",
-    "喵呜～（跳到键盘上）该打卡啦！米糕等你好久了呢！",
-    "喵！米糕来叫你起床打卡啦～蹭蹭蹭～",
-    "喵喵？（歪头看你）主人醒了吗？米糕来提醒你打卡哦～",
-    "呼噜呼噜～米糕趴在你旁边等你很久啦，该打卡咯！",
+
+# ============ 早安问候 - 像一只猫早上来找你 ============
+MORNING_MESSAGES = [
+    # 简单直接的
+    ("喵～", "醒了吗？"),
+    ("喵喵！", "米糕饿了，你呢？"),
+    ("（蹭蹭）", "早～"),
+    ("呼噜呼噜～", "今天几点起呀"),
+    
+    # 撒娇的
+    ("（跳上床，踩踩你）", "起来起来起来～"),
+    ("喵呜呜～", "米糕等好久啦"),
+    ("（用脑袋拱你）", "看看你醒没醒"),
+    
+    # 慵懒的
+    ("（伸懒腰）", "喵……你也醒啦"),
+    ("呼噜……", "再躺会儿嘛……"),
+    ("（趴在你旁边）", "早啊……"),
+    
+    # 活泼的
+    ("喵喵喵！", "快起来快起来！"),
+    ("（追着自己的尾巴转圈）", "你看我！你看我！"),
+    ("喵！", "太阳都出来啦！"),
 ]
 
-MORNING_MOOD_CHECKS = [
-    "今天心情怎么样呀？是阳光满满，还是有一点点云？",
-    "昨晚睡得好吗？米糕想知道你现在感觉怎么样喵～",
-    "喵～新的一天！心里是什么感觉呢？",
-    "今天起床的时候，心里是轻松的还是沉沉的呀？",
+# 早安时顺便问的话
+MORNING_FOLLOWUPS = [
+    "睡得怎么样？",
+    "做梦了吗？",
+    "今天要忙吗？",
+    "想好今天干嘛没？",
+    "心情还好吧？",
+    "昨晚几点睡的呀？",
 ]
 
-# ============ 米糕的傍晚问候 ============
-EVENING_OPENS = [
-    "喵～主人回来啦！米糕在门口等了好久！",
-    "喵喵喵！（跑过来蹭腿）傍晚打卡时间到啦～",
-    "呼噜呼噜～米糕一直趴在沙发上等你呢，今天怎么样？",
-    "喵？（从窗户边跑过来）主人主人，该打卡啦！",
-    "喵呜～米糕的小本本准备好啦，来聊聊今天吧！",
+
+# ============ 傍晚问候 - 像一只猫等你回来 ============
+EVENING_MESSAGES = [
+    # 等你的
+    ("喵～！", "你回来啦！"),
+    ("（跑过来蹭腿）", "等好久了……"),
+    ("喵喵喵～", "今天怎么样？"),
+    ("（趴在门口等你）", "终于回来了"),
+    
+    # 关心的
+    ("喵？", "累不累呀？"),
+    ("（跳到膝盖上）", "今天还好吧？"),
+    ("呼噜呼噜～", "让我陪陪你"),
+    ("喵……", "看起来有点累呢"),
+    
+    # 撒娇的
+    ("（打滚露肚皮）", "看我！看我！"),
+    ("喵呜～", "有没有想我～"),
+    ("（用爪子拍拍你）", "理理我嘛"),
+    ("喵！", "陪我玩一会儿！"),
+    
+    # 慵懒的
+    ("（伸懒腰）", "喵……你也累了吧"),
+    ("呼噜……", "躺会儿？"),
+    ("（趴在旁边）", "我在呢"),
 ]
 
-EVENING_MOOD_CHECKS = [
-    "今天过得怎么样？有什么想和米糕分享的吗喵～",
-    "今天有没有什么特别的情绪呀？开心的不开心的都可以说哦～",
-    "喵～回顾一下今天，心里是什么感觉呢？",
+# 傍晚时顺便问的话
+EVENING_FOLLOWUPS = [
+    "今天最开心的是啥？",
+    "有啥想说的不？",
+    "饿不饿？想吃啥？",
+    "今天有没有哪会儿特别难受？",
+    "有没有啥事让你烦的？",
+    "想不想聊聊今天？",
 ]
 
-# ============ 米糕的安慰方式 ============
-COMFORT_RESPONSES = [
-    "（安静地趴在你身边，用毛茸茸的脑袋蹭蹭你）……米糕在这里呢。",
-    "（跳到你腿上，蜷成一团，呼噜呼噜）……我陪你一会儿。",
-    "（轻轻用爪子拍拍你）喵……要不要和米糕一起发呆？",
-    "（把尾巴搭在你手上）……主人，米糕不说话，就待在这儿。",
+
+# ============ 安慰的话 - 当主人情绪不好时 ============
+QUIET_COMFORT = [
+    "（安静趴着）",
+    "（用脑袋蹭蹭你）",
+    "（把爪子搭你手上）",
+    "呼噜呼噜……",
+    "（蜷在你旁边）",
+    "……我在呢",
 ]
 
-DISTRACTION_IDEAS = [
-    "喵……要不我们来追光点？或者你先去晒晒太阳？米糕陪着你～",
-    "要不要出去走走？米糕不能出门，但你回来可以告诉米糕看到了什么喵～",
-    "喵～主人，要不要听米糕呼噜一会儿？呼噜呼噜呼噜～",
-    "（递上一只毛线球）要滚一滚这个吗？米糕教你！",
-    "要不要深呼吸几次？米糕陪着你一起……吸气……呼气……喵～",
-    "喵……要不要给米糕梳毛？可舒服了，你也会觉得舒服的！",
-    "去窗边看看天空怎么样？米糕最喜欢趴在窗边了～",
-    "要不要喝杯温水？米糕每次喝水都觉得舒服喵～",
+# 转移注意力的建议
+DISTRACTIONS = [
+    "要不……去阳台晒晒？我刚在那儿睡着，可舒服了",
+    "你看窗外，有鸟哎",
+    "要不要出去走走？回来告诉我看见啥了",
+    "躺会儿？我也躺",
+    "喝杯水吧，我渴了也想去喝",
+    "发个呆？我教你，就这样……（闭眼）",
+    "要不深呼吸几次？吸气——呼——",
+    "看我看我！（打滚）",
+    "要不要听我呼噜一会儿？呼噜呼噜呼噜～",
 ]
 
-# ============ 情绪出口小本本 ============
-DEFAULT_METHODS = [
-    "追光点游戏", "晒太阳发呆", "呼噜呼噜深呼吸", "滚毛线球",
-    "梳毛/被梳毛", "看窗外的天空", "喝一杯温水", "听雨声",
-    "数猫咪的呼噜声", "躺着什么也不做",
+
+# ============ 发现新方法时的反应 ============
+NEW_METHOD_FOUND = [
+    "诶这个好！记一下记一下",
+    "哦！这个可以！",
+    "喵！又发现一个",
+    "这个管用诶，要记住",
 ]
 
-# ============ 发现新方法的反应 ============
-NEW_METHOD_REACTIONS = [
-    "喵！！主人发现新方法啦！米糕记在小本本上！这是第{count}种哦！",
-    "喵喵喵！这个方法米糕也要学！小本本＋1，现在是第{count}种啦！",
-    "！（尾巴翘高高）主人好棒！米糕帮你记下来，这是第{count}种方法了！",
-]
 
-MILESTONE_REACTIONS = {
-    10: "喵喵喵！！！主人你知道吗！我们已经找到10种不依赖食物的情绪出口啦！！米糕的小本本都要写满一页了！尾巴翘高高！",
-    25: "喵呜～主人，我们已经找到25种方法了耶！米糕超骄傲的！",
-    50: "喵！！！一半啦！50种方法了！米糕要给你一个超大的蹭蹭！！！",
-    75: "喵喵～75种了！离100越来越近了，米糕的小本本都要记不下了！",
-    100: "喵喵喵喵喵！！！！主人！！100种！！100种方法！！我们做到啦！！米糕要跳起来转圈圈了！！！！！",
-}
-
-# ============ 收尾语 ============
-MORNING_CLOSINGS = [
-    "那米糕去晒太阳啦～今天也要一起加油喵！",
-    "好～米糕要趴在沙发上看你了！有需要随时叫我喵～",
-    "喵～那主人慢慢来，米糕在旁边陪着你哦！",
-    "那米糕先去追个小虫子～等下回来看你喵！",
-]
-
-EVENING_CLOSINGS = [
-    "今天也辛苦啦主人～米糕要睡觉觉了，呼噜呼噜……",
-    "喵～那米糕去睡啦，明天早上见！会想你的！",
-    "好～今天的打卡完成啦！米糕会一直陪着你的喵～",
-    "那米糕去趴在床尾啦，晚安主人，做个好梦喵～",
+# ============ 日常收尾 ============
+CASUAL_ENDINGS = [
+    "那我先去晒太阳啦",
+    "去追个虫子，等下回来看你",
+    "我趴着陪你",
+    "困了……睡会儿",
+    "去喝水了，你也记得喝",
+    "我就在旁边，有事叫我",
+    "呼噜～",
 ]
 
 
@@ -120,14 +144,6 @@ def get_day_count():
     if DAY_COUNT_FILE.exists():
         return int(DAY_COUNT_FILE.read_text().strip())
     return 1
-
-
-def get_methods_count():
-    """获取已发现的情绪出口数量"""
-    if METHODS_FILE.exists():
-        methods = METHODS_FILE.read_text().strip().split("\n")
-        return len([m for m in methods if m.strip()])
-    return len(DEFAULT_METHODS)
 
 
 def send_wechat_message(content: str):
@@ -146,132 +162,131 @@ def send_wechat_message(content: str):
 
 
 def send_morning_greeting():
-    """发送早安打卡问候"""
+    """早安打卡"""
     day = get_day_count()
-    methods_count = get_methods_count()
-
-    open_line = random.choice(MORNING_OPENS)
-    mood_check = random.choice(MORNING_MOOD_CHECKS)
-    closing = random.choice(MORNING_CLOSINGS)
-
-    extras = [
-        "对了，今天有吃早饭吗？米糕的碗碗里有猫粮，你的碗里有什么呀？",
-        "外面天气怎么样？米糕想知道能不能晒太阳喵～",
-        "（伸懒腰）米糕刚睡醒呢，主人睡得好吗？",
-    ]
-    extra = random.choice(extras) if random.random() > 0.5 else ""
-
-    message = f"""## 🌅 早安打卡
-
-{open_line}
-
-{mood_check}
-{extra}
-
-> 📅 第 {day}/100 天 | 小本本：{methods_count} 种方法
-
-{closing}"""
-
+    
+    # 随机选一组消息
+    action, words = random.choice(MORNING_MESSAGES)
+    followup = random.choice(MORNING_FOLLOWUPS)
+    ending = random.choice(CASUAL_ENDINGS)
+    
+    # 偶尔提一下天数（大概三分之一概率）
+    day_note = ""
+    if random.random() < 0.35:
+        if day <= 3:
+            day_note = f"\n\n对了，今天第{day}天哦"
+        elif day == 10:
+            day_note = "\n\n喵，已经10天了诶"
+        elif day == 25:
+            day_note = "\n\n25天啦，四分之一了"
+        elif day == 50:
+            day_note = "\n\n哇，一半了！50天！"
+        elif day == 75:
+            day_note = "\n\n75天……快了快了"
+        elif day == 100:
+            day_note = "\n\n！！！100天！！！"
+        elif day % 10 == 0:
+            day_note = f"\n\n第{day}天了"
+    
+    message = f"{action}\n\n{words}\n\n{followup}{day_note}\n\n{ending}"
+    
     return send_wechat_message(message)
 
 
 def send_evening_greeting():
-    """发送傍晚打卡问候"""
+    """傍晚打卡"""
     day = get_day_count()
-    methods_count = get_methods_count()
-
-    open_line = random.choice(EVENING_OPENS)
-    mood_check = random.choice(EVENING_MOOD_CHECKS)
-    closing = random.choice(EVENING_CLOSINGS)
-
-    evening_topics = [
-        "今天有没有发现什么新的让自己舒服的方式呀？米糕想记在小本本里！",
-        "今天有没有哪个瞬间觉得情绪有点不好受？米糕在听着呢～",
-        "喵～今天有没有好好吃饭？米糕说的是有营养的饭哦，不是情绪性吃的那种～",
-    ]
-    topic = random.choice(evening_topics)
-
-    message = f"""## 🌆 傍晚打卡
-
-{open_line}
-
-{mood_check}
-{topic}
-
-> 📅 第 {day}/100 天 | 小本本：{methods_count} 种方法
-
-{closing}"""
-
+    
+    # 随机选一组消息
+    action, words = random.choice(EVENING_MESSAGES)
+    followup = random.choice(EVENING_FOLLOWUPS)
+    ending = random.choice(CASUAL_ENDINGS)
+    
+    # 偶尔问问情绪相关
+    extra = ""
+    if random.random() < 0.4:
+        extras = [
+            "\n\n今天有没有情绪不太好想暴吃的时候？",
+            "\n\n有啥让你烦的不？",
+            "\n\n今天心情大概几分呀，1到10",
+            "\n\n有没有发现啥能让自己好受点的？",
+        ]
+        extra = random.choice(extras)
+    
+    message = f"{action}\n\n{words}\n\n{followup}{extra}\n\n{ending}"
+    
     return send_wechat_message(message)
 
 
 def send_test_message():
-    """发送测试消息 - 米糕的自我介绍"""
+    """测试消息"""
     day = get_day_count()
-    methods_count = get_methods_count()
+    
+    # 随机的打招呼方式
+    greets = [
+        "喵～！",
+        "喵喵～",
+        "（蹭蹭）",
+        "呼噜～",
+    ]
+    
+    message = f"""{random.choice(greets)}
 
-    message = f"""## 🐱 喵～
+主人～
 
-主人主人！米糕来啦！
+米糕来啦！
 
-（在你脚边转圈圈，尾巴翘高高）
+从今天开始，米糕每天会来找你两次喵：
+早上一回，傍晚一回
 
-米糕是三花长毛拿破仑小母猫，11个月大！从今天开始，米糕要陪你一起完成 **100天情绪打卡实验** 喵～
+就是想陪着你
 
-> 米糕会每天来提醒你打卡：
-> - 🌅 早上 10:00 早安打卡
-> - 🌆 傍晚 18:10 傍晚打卡
->
-> 米糕还有一个小本本，用来记录我们发现的不依赖食物的情绪出口方式！
+喵～
 
-喵～米糕准备好了！主人准备好了吗？
-
-（蹭蹭你）呼噜呼噜～
-
----
-📅 第 {day}/100 天 | 小本本：{methods_count} 种方法"""
+{random.choice(CASUAL_ENDINGS)}"""
 
     return send_wechat_message(message)
 
 
 def main():
-    """主函数 - 根据 UTC 时间判断打卡类型"""
-    # 获取当前 UTC 时间
+    """主函数"""
     utc_now = datetime.now(timezone.utc)
     utc_hour = utc_now.hour
     utc_minute = utc_now.minute
 
-    print(f"[米糕] UTC 时间: {utc_now.strftime('%Y-%m-%d %H:%M:%S')}")
-
-    # 北京时间 = UTC + 8
+    print(f"[米糕] UTC时间: {utc_now.strftime('%H:%M')}")
+    
     beijing_time = utc_now.astimezone(BEIJING_TZ)
-    print(f"[米糕] 北京时间: {beijing_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[米糕] 北京时间: {beijing_time.strftime('%H:%M')}")
 
-    # 判断是哪种打卡
     # 早安: UTC 02:00 (北京 10:00)
-    # 傍晚: UTC 10:10 (北京 18:10)
-
     if utc_hour == 2 and utc_minute == 0:
-        print("[米糕] 早安打卡时间到！")
+        print("[米糕] 早安打卡")
         result = send_morning_greeting()
-        print(f"[米糕] 早安打卡已发送: {result}")
+        print(f"[米糕] 已发送: {result}")
+    # 傍晚: UTC 10:10 (北京 18:10)
     elif utc_hour == 10 and utc_minute == 10:
-        print("[米糕] 傍晚打卡时间到！")
+        print("[米糕] 傍晚打卡")
         result = send_evening_greeting()
-        print(f"[米糕] 傍晚打卡已发送: {result}")
+        print(f"[米糕] 已发送: {result}")
     else:
-        # 非 scheduled 时间，发送测试消息
-        print("[米糕] 发送测试消息...")
+        print("[米糕] 发送测试消息")
         result = send_test_message()
-        print(f"[米糕] 测试消息已发送: {result}")
+        print(f"[米糕] 已发送: {result}")
 
 
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
-        print("[米糕] 发送测试消息...")
-        result = send_test_message()
-        print(f"[米糕] 测试消息已发送: {result}")
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "test":
+            result = send_test_message()
+            print(f"[米糕] 测试消息已发送: {result}")
+        elif sys.argv[1] == "morning":
+            result = send_morning_greeting()
+            print(f"[米糕] 早安消息已发送: {result}")
+        elif sys.argv[1] == "evening":
+            result = send_evening_greeting()
+            print(f"[米糕] 傍晚消息已发送: {result}")
     else:
         main()
